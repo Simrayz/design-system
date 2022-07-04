@@ -37,7 +37,7 @@ test('Renders closed width when closed', () => {
     </SideBar>,
   )
 
-  expect(screen.getAllByRole('generic')[2]).toHaveStyle({ width: '72px' })
+  expect(screen.getAllByRole('generic')[2]).toHaveStyle({ width: '66px' })
 })
 
 test('Renders open width when open', () => {
@@ -58,14 +58,11 @@ test('Triggers onToggle callback when closed', () => {
     <SideBar open={true} onToggle={cb}>
       <SideBar.Content>
         <SideBar.Toggle />
-        {defaultMenuItems.map((m) => (
-          <SideBar.Link key={m.name} {...m} />
-        ))}
       </SideBar.Content>
     </SideBar>,
   )
 
-  const collapse = screen.getByRole('button', { name: /collapse/i })
+  const collapse = screen.getByRole('button')
   userEvent.click(collapse)
 
   expect(cb).toHaveBeenCalled()
@@ -77,9 +74,6 @@ test('Triggers onToggle callback when opened', () => {
     <SideBar open={false} onToggle={cb}>
       <SideBar.Content>
         <SideBar.Toggle />
-        {defaultMenuItems.map((m) => (
-          <SideBar.Link key={m.name} {...m} />
-        ))}
       </SideBar.Content>
     </SideBar>,
   )
@@ -96,9 +90,6 @@ test('onToggle send correct state back', () => {
     <SideBar open={false} onToggle={toggle}>
       <SideBar.Content>
         <SideBar.Toggle />
-        {defaultMenuItems.map((m) => (
-          <SideBar.Link key={m.name} {...m} />
-        ))}
       </SideBar.Content>
     </SideBar>,
   )
