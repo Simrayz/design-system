@@ -15,13 +15,25 @@ import {
   bordersTemplate,
   joinHandlers,
   usePopper,
-  Placement,
   useId,
   useGlobalKeyPress,
   useIsMounted,
   useCombinedRefs,
 } from '@equinor/eds-utils'
 import { tooltip as tokens } from './Tooltip.tokens'
+import {
+  Placement,
+  offset,
+  flip,
+  shift,
+  autoUpdate,
+  useFloating,
+  useInteractions,
+  useHover,
+  useFocus,
+  useRole,
+  useDismiss,
+} from '@floating-ui/react-dom-interactions'
 
 const StyledTooltip = styled.div<{ open: boolean }>`
   ${typographyTemplate(tokens.typography)}
@@ -155,23 +167,38 @@ export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
 
     useGlobalKeyPress('Escape', () => closeTooltip())
 
-    const { styles, attributes } = usePopper({
+    const { x, y, reference, floating, strategy, context } = useFloating({
+      placement,
+      open,
+      onOpenChange: setOpen,
+      middleware: [offset(14), flip(), shift({ padding: 8 })],
+      whileElementsMounted: autoUpdate,
+    })
+
+    const { getReferenceProps, getFloatingProps } = useInteractions([
+      useHover(context),
+      useFocus(context),
+      useRole(context, { role: 'tooltip' }),
+      useDismiss(context),
+    ])
+
+/*     const { styles, attributes } = usePopper({
       anchorEl: anchorRef.current,
       popperEl,
       arrowRef,
       placement,
       offset: 14,
-    })
+    }) */
 
     const props = {
       open,
-      style: { ...styles.popper, ...style },
+      //style: { ...styles.popper, ...style },
       ...rest,
-      ...attributes.popper,
+      //...attributes.popper,
     }
 
-    const childProps = children.props as HTMLAttributes<HTMLElement>
-    const updatedChildren = cloneElement(children, {
+    //const childProps = children.props as HTMLAttributes<HTMLElement>
+/*     const updatedChildren = cloneElement(children, {
       ref: combinedChilddRef,
       'aria-describedby': open ? tooltipId : null,
       onMouseOver: joinHandlers(openTooltip, childProps.onMouseOver),
@@ -180,7 +207,7 @@ export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
       onPointerLeave: joinHandlers(closeTooltip, childProps.onPointerLeave),
       onBlur: joinHandlers(closeTooltip, childProps.onBlur),
       onFocus: joinHandlers(openTooltip, childProps.onFocus),
-    } as HTMLAttributes<HTMLElement>)
+    } as HTMLAttributes<HTMLElement>) */
 
     return (
       <>
@@ -190,11 +217,18 @@ export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
             <StyledTooltip
               id={tooltipId}
               role="tooltip"
-              ref={tooltipRef}
               {...props}
+              {...getFloatingProps({
+                ref: floating,
+                style: {
+                  position: strategy,
+                  top: y ?? 0,
+                  left: x ?? 0,
+                },
+              })}
             >
               {title}
-              <ArrowWrapper
+              {/*   <ArrowWrapper
                 ref={setArrowRef}
                 style={styles.arrow}
                 className="arrow"
@@ -202,11 +236,16 @@ export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
                 <TooltipArrow className="arrowSvg">
                   <path d="M0.504838 4.86885C-0.168399 4.48524 -0.168399 3.51476 0.504838 3.13115L6 8.59227e-08L6 8L0.504838 4.86885Z" />
                 </TooltipArrow>
-              </ArrowWrapper>
+              </ArrowWrapper> */}
             </StyledTooltip>,
             document.getElementById(containerId),
           )}
-        {updatedChildren}
+        {/* {updatedChildren} */}
+        {cloneElement(
+          children,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          getReferenceProps({ ref: reference, ...children.props }),
+        )}
       </>
     )
   },
