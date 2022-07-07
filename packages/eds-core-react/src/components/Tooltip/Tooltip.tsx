@@ -4,21 +4,18 @@ import {
   useState,
   HTMLAttributes,
   SVGProps,
-  useEffect,
   cloneElement,
+  useMemo,
+  MutableRefObject,
+  LegacyRef,
+  RefCallback,
 } from 'react'
-import * as ReactDom from 'react-dom'
 import styled from 'styled-components'
 import {
   spacingsTemplate,
   typographyTemplate,
   bordersTemplate,
-  joinHandlers,
-  usePopper,
-  useId,
-  useGlobalKeyPress,
   useIsMounted,
-  useCombinedRefs,
 } from '@equinor/eds-utils'
 import { tooltip as tokens } from './Tooltip.tokens'
 import {
@@ -26,6 +23,7 @@ import {
   offset,
   flip,
   shift,
+  arrow,
   autoUpdate,
   useFloating,
   useInteractions,
@@ -33,9 +31,10 @@ import {
   useFocus,
   useRole,
   useDismiss,
+  FloatingPortal,
 } from '@floating-ui/react-dom-interactions'
 
-const StyledTooltip = styled.div<{ open: boolean }>`
+const StyledTooltip = styled.div`
   ${typographyTemplate(tokens.typography)}
   ${spacingsTemplate(tokens.spacings)}
   ${bordersTemplate(tokens.border)}
@@ -113,113 +112,119 @@ export type TooltipProps = {
 
 export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
   function Tooltip(
-    {
-      title,
-      placement = 'bottom',
-      children,
-      enterDelay = 100,
-      id,
-      style,
-      ...rest
-    },
+    { title, placement = 'bottom', children, enterDelay = 100, ...rest },
     ref,
   ) {
     const isMounted = useIsMounted()
-    const [popperEl, setPopperEl] = useState<HTMLElement>(null)
-    const [arrowRef, setArrowRef] = useState<HTMLDivElement | null>(null)
+    const arrowRef = useRef<HTMLDivElement>(null)
     const [open, setOpen] = useState(false)
-    const openTimer = useRef<ReturnType<typeof setTimeout>>()
-    const tooltipRef = useCombinedRefs<HTMLDivElement>(setPopperEl, ref)
-    const anchorRef = useRef<HTMLElement>()
-    const combinedChilddRef = useCombinedRefs<HTMLElement>(
-      anchorRef,
-      children?.ref,
-    )
-    const tooltipId = useId(id, 'tooltip')
-    const containerId = 'eds-tooltip-container'
+
     const shouldOpen = isMounted && title !== ''
 
-    useEffect(() => {
-      if (document.getElementById(containerId) === null) {
-        const tooltipContainerElement = document.createElement('div')
-        tooltipContainerElement.id = containerId
-        document.body.appendChild(tooltipContainerElement)
-      }
-      return () => {
-        clearTimeout(openTimer.current)
-      }
-    }, [])
-
-    const openTooltip = () => {
-      if (shouldOpen) {
-        clearTimeout(openTimer.current)
-
-        openTimer.current = setTimeout(() => {
-          setOpen(true)
-        }, enterDelay)
-      }
-    }
-
-    const closeTooltip = () => {
-      clearTimeout(openTimer.current)
-      setOpen(false)
-    }
-
-    useGlobalKeyPress('Escape', () => closeTooltip())
-
-    const { x, y, reference, floating, strategy, context } = useFloating({
+    const {
+      x,
+      y,
+      reference,
+      floating,
+      strategy,
+      context,
+      middlewareData: { arrow: { x: arrowX, y: arrowY } = {} },
+    } = useFloating({
       placement,
       open,
       onOpenChange: setOpen,
-      middleware: [offset(14), flip(), shift({ padding: 8 })],
+      middleware: [
+        offset(14),
+        flip(),
+        shift({ padding: 8 }),
+        arrow({ element: arrowRef }),
+      ],
       whileElementsMounted: autoUpdate,
     })
+    //const combinedChildRef = useCombinedRefs(reference, children?.ref)
+    //this mergeRefs solution from delta-ui works, while our useCombinedRefs does not work
+    //https://github.com/deltasolutions/delta-ui/blob/0a4fc9c510b968ece05310a7dff8279552ef831a/packages/delta-ui-kit/lib/utils/mergeRefs.tsx
+    const mergeRefs = <T,>(
+      refs: (MutableRefObject<T> | LegacyRef<T>)[],
+    ): RefCallback<T> => {
+      return (value) => {
+        refs.forEach((ref) => {
+          if (typeof ref === 'function') {
+            ref(value)
+          } else if (ref && typeof ref === 'object') {
+            // eslint-disable-next-line @typescript-eslint/no-extra-semi
+            ;(ref as MutableRefObject<T | null>).current = value
+          }
+        })
+      }
+    }
+
+    //https://github.com/deltasolutions/delta-ui/blob/0a4fc9c510b968ece05310a7dff8279552ef831a/packages/delta-ui-kit/lib/components/Tooltip.tsx
+    const mergedRef = useMemo(
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      () => mergeRefs([reference, children?.ref]),
+      [reference, children?.ref],
+    )
+
+    const tooltipRef = useMemo(
+      () => mergeRefs([floating, ref]),
+      [floating, ref],
+    )
 
     const { getReferenceProps, getFloatingProps } = useInteractions([
-      useHover(context),
+      useHover(context, { delay: { open: enterDelay } }),
       useFocus(context),
       useRole(context, { role: 'tooltip' }),
       useDismiss(context),
     ])
 
-/*     const { styles, attributes } = usePopper({
-      anchorEl: anchorRef.current,
-      popperEl,
-      arrowRef,
-      placement,
-      offset: 14,
-    }) */
+    const staticSide = {
+      top: 'bottom',
+      right: 'left',
+      bottom: 'top',
+      left: 'right',
+    }[placement.split('-')[0]]
 
-    const props = {
-      open,
-      //style: { ...styles.popper, ...style },
-      ...rest,
-      //...attributes.popper,
+    let arrowTransform = 'none'
+    switch (staticSide) {
+      case 'right':
+        arrowTransform = 'rotateY(180deg)'
+        break
+      case 'left':
+        arrowTransform = 'none'
+        break
+      case 'top':
+        arrowTransform = 'rotate(90deg)'
+        break
+      case 'bottom':
+        arrowTransform = 'rotate(-90deg)'
+        break
     }
 
-    //const childProps = children.props as HTMLAttributes<HTMLElement>
-/*     const updatedChildren = cloneElement(children, {
-      ref: combinedChilddRef,
-      'aria-describedby': open ? tooltipId : null,
-      onMouseOver: joinHandlers(openTooltip, childProps.onMouseOver),
-      onMouseLeave: joinHandlers(closeTooltip, childProps.onMouseLeave),
-      onPointerEnter: joinHandlers(openTooltip, childProps.onPointerEnter),
-      onPointerLeave: joinHandlers(closeTooltip, childProps.onPointerLeave),
-      onBlur: joinHandlers(closeTooltip, childProps.onBlur),
-      onFocus: joinHandlers(openTooltip, childProps.onFocus),
-    } as HTMLAttributes<HTMLElement>) */
+    if (arrowRef.current) {
+      Object.assign(arrowRef.current.style, {
+        left: arrowX != null ? `${arrowX}px` : '',
+        top: arrowY != null ? `${arrowY}px` : '',
+        right: '',
+        bottom: '',
+        [staticSide]: '-6px',
+        transform: arrowTransform,
+      })
+    }
+
+    const updatedChildren = cloneElement(children, {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      ...getReferenceProps({ ref: mergedRef, ...children.props }),
+    })
 
     return (
       <>
-        {shouldOpen &&
-          open &&
-          ReactDom.createPortal(
+        <FloatingPortal id="eds-tooltip-container">
+          {shouldOpen && open && (
             <StyledTooltip
-              id={tooltipId}
-              role="tooltip"
-              {...props}
+              {...rest}
               {...getFloatingProps({
-                ref: floating,
+                ref: tooltipRef,
                 style: {
                   position: strategy,
                   top: y ?? 0,
@@ -228,24 +233,15 @@ export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
               })}
             >
               {title}
-              {/*   <ArrowWrapper
-                ref={setArrowRef}
-                style={styles.arrow}
-                className="arrow"
-              >
+              <ArrowWrapper ref={arrowRef} className="arrow">
                 <TooltipArrow className="arrowSvg">
                   <path d="M0.504838 4.86885C-0.168399 4.48524 -0.168399 3.51476 0.504838 3.13115L6 8.59227e-08L6 8L0.504838 4.86885Z" />
                 </TooltipArrow>
-              </ArrowWrapper> */}
-            </StyledTooltip>,
-            document.getElementById(containerId),
+              </ArrowWrapper>
+            </StyledTooltip>
           )}
-        {/* {updatedChildren} */}
-        {cloneElement(
-          children,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          getReferenceProps({ ref: reference, ...children.props }),
-        )}
+        </FloatingPortal>
+        {updatedChildren}
       </>
     )
   },
